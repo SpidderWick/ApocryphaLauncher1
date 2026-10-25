@@ -22,40 +22,30 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Instalar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
       - name: Extrair projeto Android
         run: |
-          sudo apt-get update
-          sudo apt-get install -y unzip
-          ZIP=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
-          if [ -z "$ZIP" ]; then
-            echo "Nenhum ZIP encontrado na raiz."
-            exit 1
-          fi
+          set -eu
           mkdir -p source
-          unzip -q "$ZIP" -d source
-          WRAPPER=$(find source -type f -name gradlew | head -n 1)
-          if [ -z "$WRAPPER" ]; then
-            echo "Não encontrei gradlew no ZIP."
-            find source -maxdepth 3 -type f | head -n 50
-            exit 1
-          fi
-          echo "PROJECT_DIR=$(dirname "$WRAPPER")" >> "$GITHUB_ENV"
+          ZIP=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
+          test -n "$ZIP" || { echo "ZIP não encontrado"; exit 1; }
+          unzip -oq "$ZIP" -d source
+          SETTINGS=$(find source -type f -name settings.gradle.kts | head -n 1)
+          test -n "$SETTINGS" || { echo "Projeto Android não encontrado no ZIP"; exit 1; }
+          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
 
       - name: Compilar APK
         run: |
           cd "$PROJECT_DIR"
-          chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
+          gradle --no-daemon assembleDebug
 
-      - name: Preparar APK
-        run: |
-          mkdir -p output
-          find source -type f -path '*/build/outputs/apk/debug/*.apk' -exec cp {} output/ \;
-          test -n "$(find output -name '*.apk' -print -quit)"
-
-      - name: Disponibilizar APK
+      - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
           name: ApocryphaLauncher-debug-apk
-          path: output/*.apk
+          path: source/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
